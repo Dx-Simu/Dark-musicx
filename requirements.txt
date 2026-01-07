@@ -1,4 +1,4 @@
 pyrogram
-pytgcalls[ffmpeg]
-yt-dlp
+tgcrypto
 flask
+scikit-learn
