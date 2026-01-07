@@ -1,5 +1,4 @@
 pyrogram
-tgcalls
-pytgcalls
+pytgcalls[ffmpeg]
 yt-dlp
-ffmpeg-python
+flask
