@@ -1,4 +1,8 @@
 pyrogram
 tgcrypto
+motor
+pymongo[srv]
+yt-dlp
 flask
-scikit-learn
+requests
+pillow
