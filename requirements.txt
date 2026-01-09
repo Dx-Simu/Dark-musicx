@@ -1,8 +1,4 @@
 pyrogram
 tgcrypto
-motor
-dnspython
-requests
-yt-dlp
 flask
-asyncio
+gunicorn
