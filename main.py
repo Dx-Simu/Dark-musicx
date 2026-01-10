@@ -3,6 +3,7 @@ import subprocess
 import threading
 import time
 import asyncio
+import sys
 from flask import Flask
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message
@@ -14,61 +15,109 @@ API_HASH = "6fc0ea1c8dacae05751591adedc177d7"
 BOT_TOKEN = "8538226909:AAEKBGQPJ95MTJzYtpIG1-kUltuey42rbLU"
 OWNER_ID = 6703335929
 DEV = "ᴅx–ᴄᴏᴅᴇx"
-CHANNELS = ["alphacodex369", "Termuxcodex"] # Channel usernames without @
+CHANNELS = ["alphacodex369", "Termuxcodex"] 
 
 app = Client("ultimate_terminal", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 web_app = Flask(__name__)
 
-# Terminal States
-editing_file = {} # Store file content during nano/vim sessions
+# System States
+editing_file = {} 
+user_dirs = {} # Proti user er jonno alada directory tracking
 
 # --- RENDER KEEP-ALIVE ---
 @web_app.route('/')
-def home(): return f"🚀 {DEV} ᴛᴇʀᴍɪɴᴀʟ sʏsᴛᴇᴍ ɪs ᴀʟɪᴠᴇ!"
+def home(): return f"🚀 {DEV} ᴛᴇʀᴍɪɴᴀʟ sʏsᴛᴇᴍ ɪs ᴀʟɪᴠᴇ ᴀɴᴅ ᴘᴜʙʟɪᴄ!"
 
 def run_web(): web_app.run(host="0.0.0.0", port=8080)
 
 # --- FORCE JOIN CHECKER ---
-async def is_subscribed(client, message):
-    if message.from_user.id == OWNER_ID: return True
+async def is_subscribed(client, user_id):
     for chat in CHANNELS:
         try:
-            await client.get_chat_member(chat, message.from_user.id)
+            await client.get_chat_member(chat, user_id)
         except UserNotParticipant:
+            return False
+        except Exception:
             return False
     return True
 
-# --- TERMINAL ENGINE ---
+# --- ADVANCE TERMINAL ENGINE ---
 def execute_shell(command, message):
-    # Nano/Vim Simulation
+    uid = message.from_user.id
+    
+    # User specific working directory setup
+    if uid not in user_dirs:
+        user_dirs[uid] = os.getcwd()
+    
+    current_path = user_dirs[uid]
+
+    # 1. Nano/Vim Simulation
     if command.startswith(("nano ", "vim ", "vi ")):
-        file_name = command.split(" ", 1)[1]
-        editing_file[message.from_user.id] = {"name": file_name, "content": ""}
-        btn = InlineKeyboardMarkup([[InlineKeyboardButton("💾 sᴀᴠᴇ ғɪʟᴇ", callback_data=f"save_{message.from_user.id}")]])
-        message.reply_text(f"📝 ᴇᴅɪᴛɪɴɢ: <code>{file_name}</code>\n\nᴘʟᴇᴀsᴇ sᴇɴᴅ ᴛʜᴇ ᴄᴏɴᴛᴇɴᴛ ɴᴏᴡ.", reply_markup=btn)
+        parts = command.split(" ", 1)
+        file_name = parts[1] if len(parts) > 1 else "untitled.txt"
+        editing_file[uid] = {"name": file_name, "content": ""}
+        btn = InlineKeyboardMarkup([[InlineKeyboardButton("💾 sᴀᴠᴇ ғɪʟᴇ", callback_data=f"save_{uid}")]])
+        message.reply_text(
+            f"╭──╼ 📝 <b>ᴇᴅɪᴛɪɴɢ ᴍᴏᴅᴇ</b>\n"
+            f"│ 📂 <b>ғɪʟᴇ:</b> <code>{file_name}</code>\n"
+            f"│ 👤 <b>ᴜsᴇʀ:</b> <a href='tg://user?id={uid}'>{message.from_user.first_name}</a>\n"
+            f"╰──────────────╼\n\n"
+            f"✨ <i>sᴇɴᴅ ᴛᴇxᴛ ᴛᴏ ᴀᴅᴅ, ᴛʜᴇɴ ᴄʟɪᴄᴋ sᴀᴠᴇ.</i>", 
+            reply_markup=btn
+        )
         return
 
-    # Real-time Execution
-    process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    header = f"╭─ 👤 <b>ᴜsᴇʀ:</b> <code>{message.from_user.first_name}</code>\n╰─ 💻 <b>ᴄᴏᴅᴇx-ᴛᴇʀᴍ:</b> <code>$ {command}</code>\n\n"
-    
-    msg = message.reply_text("⏳ ᴘʀᴏᴄᴇssɪɴɢ...")
-    output = ""
-    last_update = 0
+    # 2. cd command handle
+    if command.startswith("cd "):
+        try:
+            target_dir = command.split(" ", 1)[1]
+            # Handle absolute vs relative path
+            new_path = os.path.abspath(os.path.join(current_path, target_dir))
+            if os.path.isdir(new_path):
+                user_dirs[uid] = new_path
+                message.reply_text(f"📁 <b>ᴅɪʀᴇᴄᴛᴏʀʏ ᴄʜᴀɴɢᴇᴅ:</b>\n<code>{new_path}</code>")
+            else:
+                message.reply_text("❌ <b>ᴇʀʀᴏʀ:</b> Directory not found.")
+            return
+        except Exception as e:
+            message.reply_text(f"❌ <b>ᴇʀʀᴏʀ:</b> <code>{str(e)}</code>")
+            return
 
-    for line in iter(process.stdout.readline, ""):
-        output += line
-        if time.time() - last_update > 2.5:
-            try:
-                msg.edit_text(f"{header}<code>{output[-3800:]}</code>")
-                last_update = time.time()
-            except: pass
-            
-    process.wait()
-    final_output = output if output else "No output / Process finished."
+    # 3. Execution Engine
+    header = (
+        f"╭─ 👤 <b>ᴜsᴇʀ:</b> <a href='tg://user?id={uid}'>{message.from_user.first_name}</a>\n"
+        f"├─ 📂 <b>ᴘᴀᴛʜ:</b> <code>{current_path}</code>\n"
+        f"╰─ 💻 <b>ᴄᴏᴅᴇx-ᴛᴇʀᴍ:</b> <code>$ {command}</code>\n\n"
+    )
+    
+    msg = message.reply_text("⏳ ᴇxᴇᴄᴜᴛɪɴɢ...")
+    
     try:
+        process = subprocess.Popen(
+            command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, 
+            text=True, cwd=current_path, env=os.environ.copy()
+        )
+        
+        output = ""
+        last_update = 0
+
+        while True:
+            line = process.stdout.readline()
+            if not line: break
+            output += line
+            
+            if time.time() - last_update > 3:
+                try:
+                    msg.edit_text(f"{header}<code>{output[-3800:]}</code>")
+                    last_update = time.time()
+                except: pass
+        
+        process.wait()
+        final_output = output if output else "Process finished (No output)."
         msg.edit_text(f"{header}<code>{final_output[-3800:]}</code>\n\n✅ ᴇxᴇᴄᴜᴛɪᴏɴ ᴄᴏᴍᴘʟᴇᴛᴇᴅ")
-    except: pass
+
+    except Exception as e:
+        msg.edit_text(f"❌ <b>ᴄʀɪᴛɪᴄᴀʟ ᴇʀʀᴏʀ:</b>\n<code>{str(e)}</code>")
 
 # --- HANDLERS ---
 
@@ -76,54 +125,57 @@ def execute_shell(command, message):
 async def start_handler(client, message):
     user = message.from_user
     text = (
-        f"╭──╼ <b>ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ ᴄᴏᴅᴇx ᴛᴇʀᴍ</b>\n"
-        f"│ 👤 <b>ᴜsᴇʀ:</b> <code>{user.first_name}</code>\n"
-        f"│ ⚡ <b>sᴛᴀᴛᴜs:</b> ᴀᴄᴛɪᴠᴇ\n"
+        f"╭──╼ 🌟 <b>ᴄᴏᴅᴇx ᴜʟᴛɪᴍᴀᴛᴇ ᴛᴇʀᴍɪɴᴀʟ</b>\n"
+        f"│ 👤 <b>ᴜsᴇʀ:</b> <a href='tg://user?id={user.id}'>{user.first_name}</a>\n"
+        f"│ 🆔 <b>ɪᴅ:</b> <code>{user.id}</code>\n"
+        f"│ ⚡ <b>sʏsᴛᴇᴍ:</b> ᴀᴄᴛɪᴠᴇ\n"
         f"╰──────────────╼\n\n"
-        f"✨ <i>ᴘʟᴇᴀsᴇ sᴜʙsᴄʀɪʙᴇ ᴛᴏ ᴏᴜʀ ᴄʜᴀɴɴᴇʟs ᴛᴏ ᴜsᴇ ᴛʜɪs ᴛᴇʀᴍɪɴᴀʟ.</i>"
+        f"🚀 <b>ᴛʜɪs ɪs ᴀ ᴘᴜʙʟɪᴄ ᴛᴇʀᴍɪɴᴀʟ ʙᴏᴛ.</b>\n"
+        f"ᴊᴏɪɴ ᴏᴜʀ ᴄʜᴀɴɴᴇʟs ᴛᴏ ᴀᴄᴄᴇss ᴛʜᴇ sʜᴇʟʟ."
     )
     buttons = [
-        [InlineKeyboardButton("📢 ᴊᴏɪɴ ᴄʜᴀɴɴᴇʟ 1", url=f"https://t.me/{CHANNELS[0]}")],
-        [InlineKeyboardButton("📢 ᴊᴏɪɴ ᴄʜᴀɴɴᴇʟ 2", url=f"https://t.me/{CHANNELS[1]}")],
-        [InlineKeyboardButton("✅ ᴠᴇʀɪғʏ sᴜʙsᴄʀɪᴘᴛɪᴏɴ", callback_data="verify_sub")]
+        [InlineKeyboardButton("📢 ᴀʟᴘʜᴀ ᴄᴏᴅᴇx", url=f"https://t.me/{CHANNELS[0]}"),
+         InlineKeyboardButton("📢 ᴛᴇʀᴍᴜx ᴄᴏᴅᴇx", url=f"https://t.me/{CHANNELS[1]}")],
+        [InlineKeyboardButton("✅ ᴠᴇʀɪғʏ ᴀɴᴅ ᴀᴄᴄᴇss", callback_data="verify_sub")]
     ]
     await message.reply_text(text, reply_markup=InlineKeyboardMarkup(buttons))
 
 @app.on_callback_query()
 async def cb_handler(client, query):
+    uid = query.from_user.id
     if query.data == "verify_sub":
-        if await is_subscribed(client, query.message):
-            await query.message.edit_text(f"✅ <b>ᴠᴇʀɪғɪᴄᴀᴛɪᴏɴ sᴜᴄᴄᴇssғᴜʟ!</b>\n\nᴍᴀsᴛᴇʀ {DEV}, ʏᴏᴜ ᴄᴀɴ ɴᴏᴡ sᴇɴᴅ ᴀɴʏ ᴄᴏᴍᴍᴀɴᴅ ᴅɪʀᴇᴄᴛʟʏ.")
+        if await is_subscribed(client, uid):
+            await query.message.edit_text(
+                f"╭──╼ ✅ <b>ᴀᴄᴄᴇss ɢʀᴀɴᴛᴇᴅ</b>\n"
+                f"│ 👤 <b>ᴜsᴇʀ:</b> <a href='tg://user?id={uid}'>{query.from_user.first_name}</a>\n"
+                f"╰──────────────╼\n\n"
+                f"ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ {DEV} ᴛᴇʀᴍɪɴᴀʟ.\n sᴇɴᴅ ᴀɴʏ ᴄᴏᴍᴍᴀɴᴅ ᴛᴏ ʙᴇɢɪɴ."
+            )
         else:
-            await query.answer("❌ ʏᴏᴜ ʜᴀᴠᴇɴ'ᴛ ᴊᴏɪɴᴇᴅ ᴀʟʟ ᴄʜᴀɴɴᴇʟs!", show_alert=True)
+            await query.answer("❌ Please join both channels first!", show_alert=True)
             
     elif query.data.startswith("save_"):
-        uid = int(query.data.split("_")[1])
-        if uid in editing_file:
+        sid = int(query.data.split("_")[1])
+        if uid == sid and uid in editing_file:
             data = editing_file[uid]
-            with open(data['name'], 'w') as f:
+            path = os.path.join(user_dirs.get(uid, os.getcwd()), data['name'])
+            with open(path, 'w') as f:
                 f.write(data['content'])
-            await query.message.edit_text(f"💾 <b>ғɪʟᴇ sᴀᴠᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ:</b> <code>{data['name']}</code>")
+            await query.message.edit_text(f"💾 <b>ғɪʟᴇ sᴀᴠᴇᴅ:</b> <code>{data['name']}</code>")
             del editing_file[uid]
 
 @app.on_message(filters.text & ~filters.command(["start", "help"]))
 async def terminal_input(client, message):
-    # Check if owner or verified
-    if not await is_subscribed(client, message):
-        return await message.reply_text("❌ ᴘʟᴇᴀsᴇ ᴠᴇʀɪғʏ ғɪʀsᴛ ᴜsɪɴɢ /start")
-
     uid = message.from_user.id
-    # If user is in Nano/Vim mode
+    if not await is_subscribed(client, uid):
+        return await message.reply_text("❌ ᴘʟᴇᴀsᴇ ᴊᴏɪɴ ᴏᴜʀ ᴄʜᴀɴɴᴇʟs ᴀɴᴅ ᴠᴇʀɪғʏ ᴜsɪɴɢ /start")
+
     if uid in editing_file:
         editing_file[uid]['content'] += message.text + "\n"
-        return await message.reply_text("📍 ᴄᴏɴᴛᴇɴᴛ ᴀᴅᴅᴇᴅ. sᴇɴᴅ ᴍᴏʀᴇ ᴏʀ ᴄʟɪᴄᴋ sᴀᴠᴇ.")
+        return await message.reply_text("📍 ʟɪɴᴇ ᴀᴅᴅᴇᴅ.")
 
-    # Direct Terminal Execution
-    cmd = message.text
-    threading.Thread(target=execute_shell, args=(cmd, message)).start()
+    threading.Thread(target=execute_shell, args=(message.text, message)).start()
 
-# --- RUN BOT ---
 if __name__ == "__main__":
     threading.Thread(target=run_web, daemon=True).start()
-    print(f"--- {DEV} ᴛᴇʀᴍɪɴᴀʟ ʙᴏᴛ sᴛᴀʀᴛᴇᴅ ---")
     app.run()
